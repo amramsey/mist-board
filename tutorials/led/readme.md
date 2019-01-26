@@ -20,6 +20,27 @@ First of all you need to download the quartus web edition for your operating
 system from https://dl.altera.com/?edition=web Please make sure you download
 vesion 13.1 as newer versions don't support the Cyclone III FPGA anymore.
 
+To install & run Quartus 13.1 on a modern (64 bits) distribution, you will need to
+install 32 bits versions of the following libraries: 
+libc6, libstdc++6, libx11-6, libxext6, libxau6, libxdmcp6, libfreetype6, libfontconfig1,
+libexpat1, libxrender1, libsm6. For example, on Ubuntu, enter this in a terminal:
+```
+$ sudo apt install libc6:i386 libstdc++6:i386 libx11-6:i386 libxext6:i386 libxau6:i386 libxdmcp6:i386 libfreetype6:i386 libfontconfig1:i386 libexpat1:i386 libxrender1:i386 libsm6:i386
+```
+libpng12 is also needed but not available anymore. On Ubuntu, you can get it here instead:
+
+- 32bit: https://packages.ubuntu.com/xenial/i386/libpng12-0/download
+- 64bit: https://packages.ubuntu.com/xenial/amd64/libpng12-0/download
+
+Finally, the setup.sh file for Quartus 13.1 shall be run with:
+```
+$ bash setup.sh
+```
+Quartus itself can be run with the command (omit --64bit for the 32bit version):
+```
+$ ~/altera/13.1/quartus/bin/quartus --64bit
+```
+
 Once installed Quartus will allow you to import the [led.qar](https://github.com/mist-devel/mist-board/raw/master/tutorials/led/led.qar) archive. Use the qar import by selecting "Restore Archived Project..." from the "Project" menu.
 
 Selecting "Start Compilation" from the "Processing" menu will create the led.rbf

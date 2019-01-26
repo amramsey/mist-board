@@ -717,8 +717,52 @@ to a TVs RGBS input. Many old CRTs also support this.
 Links:
  - [MIST Scart cable](https://github.com/mist-devel/mist-board/wiki/ScartCable)
  - [Disabling scandoubler in MIST .ini file](https://github.com/mist-devel/mist-board/wiki/DocIni#scandoubler_disable)
- - [Buy a cable](http://lotharek.pl/product.php?pid=168)
+ - Buy a cable [from Lotharek](https://lotharek.pl/productdetail.php?id=171) or [Dragonbox](https://www.dragonbox.de/de/413-mist-scart-kabel-2m-kabel.html)
 
 Files required on SD card:
  - [`soc.rbf`](https://github.com/mist-devel/mist-board/raw/master/tutorials/soc/lesson11/soc.rbf) renamed to `core.rbf`
+
+[Lesson 12](https://github.com/mist-devel/mist-board/tree/master/tutorials/soc/lesson12): YPbPr component video
+-------------------------------
+
+SCART is a nice way to send a true "retro" video signal to a TV.
+Unfortunately SCART or any other kind of RGBs input isn't available
+on most modern TVs anymore.
+
+What many TVs still have is a so-called YPbPr component input. This
+type of input uses three connections Y, Pb and Pr. Y carries a
+geyscale signal together with a composite sync signal. Thus only
+connecting the Y signal may already result in a grayscale image
+on many TVs. The other two signal Pb and Pr carry color difference
+signals. Together with the Y signal they allow the TV to reconstruct
+the color. 
+
+For YPbPr a special adaptor is need for the MIST as described in the
+[MIST wiki](https://github.com/mist-devel/mist-board/wiki/YPbPr_Cable).
+
+Many TVs support various common video modes on their component inputs.
+It is thus often possible to use the YPbPr with or without
+scandoubler.  With scandoubler enabled the resulting 720p modes may
+even use scanline effects.
+
+In order to make use of such a cable a MIST core has to output the
+color differnce signals instead of RGB and it must output a composite
+sync signal on the VGAs hsync output and a static high voltage on the
+VGAs vsync output. Using the OSD to switch between these two modes
+would be rather useless since with the wrong setting the OSD is
+invisible. The MISTs firmware thus accepts a [`ypbpr` option in the
+`mist.ini`](https://github.com/mist-devel/mist-board/wiki/DocIni#ypbpr)
+to globally force cores supporting this video mode. This option can be
+combined with the [`scandoubler_disable`
+option](https://github.com/mist-devel/mist-board/wiki/DocIni#scandoubler_disable)
+
+This makes a YPbPr connection a very nice choice when connecting the
+MIST to many modern TVs.
+
+Links:
+ - [MIST YPbPr adapter](https://github.com/mist-devel/mist-board/wiki/YPbPr_Cable)
+ - [Enabling YPbPr in the MIST .ini file](https://github.com/mist-devel/mist-board/wiki/DocIni#ypbpr)
+
+Files required on SD card:
+ - [`soc.rbf`](https://github.com/mist-devel/mist-board/raw/master/tutorials/soc/lesson12/soc.rbf) renamed to `core.rbf`
   

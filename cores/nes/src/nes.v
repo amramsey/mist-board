@@ -130,6 +130,7 @@ module NES(input clk, input reset, input ce,
            output joypad_strobe,// Set to 1 to strobe joypads. Then set to zero to keep the value.
            output [1:0] joypad_clock, // Set to 1 for each joypad to clock it.
            input [3:0] joypad_data, // Data for each joypad + 1 powerpad.
+			  input fds_swap,
            input [4:0] audio_channels, // Enabled audio channels
 
            
@@ -144,9 +145,8 @@ module NES(input clk, input reset, input ce,
            
            output [8:0] cycle,
            output [8:0] scanline,
-           
-           output reg [31:0] dbgadr,
-           output [1:0] dbgctr
+           input int_audio,
+           input ext_audio
            );
   reg [7:0] from_data_bus;
   wire [7:0] cpu_dout;
@@ -160,7 +160,7 @@ module NES(input clk, input reset, input ce,
     if (reset)
       cpu_cycle_counter <= 0;
     else if (ce)
-      cpu_cycle_counter <= (cpu_cycle_counter == 2) ? 0 : cpu_cycle_counter + 1;
+      cpu_cycle_counter <= (cpu_cycle_counter == 2) ? 2'd0 : cpu_cycle_counter + 1'd1;
   end
 
   // Sample the NMI flag on cycle #0, otherwise if NMI happens on cycle #0 or #1,
@@ -174,15 +174,33 @@ module NES(input clk, input reset, input ce,
       nmi_active <= nmi;
   end
 
-  wire apu_ce =        ce && (cpu_cycle_counter == 2);
+  wire apu_ce = ce && (cpu_cycle_counter == 2);
 
   // -- CPU
   wire [15:0] cpu_addr;
-  wire cpu_mr, cpu_mw;
+  wire cpu_rnw;
   wire pause_cpu;
   reg apu_irq_delayed;
   reg mapper_irq_delayed;
-  CPU cpu(clk, apu_ce && !pause_cpu, reset, from_data_bus, apu_irq_delayed | mapper_irq_delayed, nmi_active, cpu_dout, cpu_addr, cpu_mr, cpu_mw);
+  
+	T65 cpu
+	(
+		.mode(0),
+		.BCD_en(0),
+
+		.res_n(~reset),
+		.clk(clk),
+		.enable(apu_ce && !pause_cpu),
+
+		.IRQ_n(~(apu_irq_delayed | mapper_irq_delayed)),
+		.NMI_n(~nmi_active),
+		.R_W_n(cpu_rnw),
+
+		.A(cpu_addr),
+		.DI(cpu_rnw ? from_data_bus : cpu_dout),
+		.DO(cpu_dout)
+	);
+
 
   // -- DMA
   wire [15:0] dma_aout;
@@ -195,14 +213,14 @@ module NES(input clk, input reset, input ce,
   // Determine the values on the bus outgoing from the CPU chip (after DMA / APU)
   wire [15:0] addr = dma_aout_enable ? dma_aout : cpu_addr;
   wire [7:0]  dbus = dma_aout_enable ? dma_data_to_ram : cpu_dout;
-  wire mr_int      = dma_aout_enable ? dma_read : cpu_mr;
-  wire mw_int      = dma_aout_enable ? !dma_read : cpu_mw;
+  wire mr_int      = dma_aout_enable ? dma_read : cpu_rnw;
+  wire mw_int      = dma_aout_enable ? !dma_read : !cpu_rnw;
 
   DmaController dma(clk, apu_ce, reset, 
                     odd_or_even,                    // Even or odd cycle
                     (addr == 'h4014 && mw_int),     // Sprite trigger
                     apu_dma_request,                // DMC Trigger
-                    cpu_mr,                         // CPU in a read cycle?
+                    cpu_rnw,                        // CPU in a read cycle?
                     cpu_dout,                       // Data from cpu
                     from_data_bus,                  // Data from RAM etc.
                     apu_dma_addr,                   // DMC addr
@@ -217,11 +235,12 @@ module NES(input clk, input reset, input ce,
   wire apu_cs = addr >= 'h4000 && addr < 'h4018;
   wire [7:0] apu_dout;
   wire apu_irq;
-  APU apu(clk, apu_ce, reset,
+  wire [15:0] sample_apu;
+  APU apu(0, clk, apu_ce, reset,
           addr[4:0], dbus, apu_dout, 
           mw_int && apu_cs, mr_int && apu_cs,
           audio_channels,
-          sample,
+          sample_apu,
           apu_dma_request,
           apu_dma_ack,
           apu_dma_addr,
@@ -265,9 +284,13 @@ module NES(input clk, input reset, input ce,
   wire cart_ce = (cpu_cycle_counter == 0) && ce;
   wire mapper_irq;
   wire has_chr_from_ppu_mapper;
+  wire [15:0] sample_ext;
+  reg [16:0] sample_sum;
+  assign sample = sample_sum[16:1]; //loss of 1 bit of resolution.  Add control for when no external audio to boost back up?
   MultiMapper multi_mapper(clk, cart_ce, ce, reset, mapper_ppu_flags, mapper_flags, 
                            prg_addr, prg_linaddr, prg_read, prg_write, prg_din, prg_dout_mapper, from_data_bus, prg_allow,
-                           chr_read, chr_addr, chr_linaddr, chr_from_ppu_mapper, has_chr_from_ppu_mapper, chr_allow, vram_a10, vram_ce, mapper_irq);
+                           chr_read, chr_addr, chr_linaddr, chr_from_ppu_mapper, has_chr_from_ppu_mapper, chr_allow, vram_a10,
+									vram_ce, mapper_irq, sample_ext, fds_swap);
   assign chr_to_ppu = has_chr_from_ppu_mapper ? chr_from_ppu_mapper : memory_din_ppu;
                              
   // Mapper IRQ seems to be delayed by one PPU clock.   
@@ -280,6 +303,14 @@ module NES(input clk, input reset, input ce,
       mapper_irq_delayed <= mapper_irq;
     if (apu_ce)
       apu_irq_delayed <= apu_irq;
+    if (ce | apu_ce) begin
+      case ({int_audio, ext_audio})
+      0: sample_sum <= 17'b0;
+      1: sample_sum <= {1'b0,sample_ext};
+      2: sample_sum <= {1'b0,sample_apu};
+      3: sample_sum <= {1'b0,sample_ext} + {1'b0,sample_apu};
+      endcase
+    end
   end
    
   // -- Multiplexes CPU and PPU accesses into one single RAM
@@ -289,7 +320,7 @@ module NES(input clk, input reset, input ce,
 
   always @* begin
     if (reset)
-		from_data_bus <= 0;
+		from_data_bus = 0;
     else if (apu_cs) begin
       if (joypad1_cs)
         from_data_bus = {7'b0100000, joypad_data[0]};
